@@ -1,62 +1,85 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.21;
 
-import "@openzeppelin/contracts/security/Pausable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-contract Campaign is Pausable {
+contract Campaign {
+    enum Status { Active, Completed, Successful }
+
     IERC20 public token;
     address public beneficiary;
     uint256 public target;
     uint256 public deadline;
-    bool public goalReached;
+    uint256 public totalDonated;
+    Status public status;
 
-    mapping(address => uint256) public contributions;
+    string public name;
+    string public description;
 
-    constructor(IERC20 _token, address _beneficiary, uint256 _target, uint256 _deadline) {
+    event DonationReceived(address indexed donor, uint256 amount);
+    event CampaignCompleted(bool successful);
+    event MetadataUpdated(string name, string description);
+
+    constructor(
+        IERC20 _token,
+        address _beneficiary,
+        uint256 _target,
+        uint256 _deadline,
+        string memory _name,
+        string memory _description
+    ) {
+        require(address(_token) != address(0), "Invalid token");
+        require(_beneficiary != address(0), "Invalid beneficiary");
+        require(_target > 0, "Target must be > 0");
+        require(_deadline > block.timestamp, "Deadline must be in the future");
+
         token = _token;
         beneficiary = _beneficiary;
         target = _target;
         deadline = _deadline;
+        name = _name;
+        description = _description;
+        status = Status.Active;
+
+        emit MetadataUpdated(_name, _description);
     }
 
-    function contribute(uint256 amount) external whenNotPaused {
-        require(block.timestamp <= deadline, "Campaign ended");
-        token.transferFrom(msg.sender, address(this), amount);
-        contributions[msg.sender] += amount;
-    }
+    function donate(uint256 amount) external {
+        require(status == Status.Active, "Campaign not active");
+        require(block.timestamp < deadline, "Campaign ended");
+        require(amount > 0, "Amount must be > 0");
 
-    function claimFunds() external whenNotPaused {
-        require(block.timestamp > deadline, "Campaign ongoing");
-        require(!goalReached, "Funds already claimed");
+        token.transferFrom(msg.sender, beneficiary, amount);
+        totalDonated += amount;
 
-        if(token.balanceOf(address(this)) >= target) {
-            token.transfer(beneficiary, token.balanceOf(address(this)));
-            goalReached = true;
+        emit DonationReceived(msg.sender, amount);
+
+        if (totalDonated >= target) {
+            status = Status.Successful;
+            emit CampaignCompleted(true);
         }
     }
 
-    function refund() external whenNotPaused {
-        require(block.timestamp > deadline, "Campaign ongoing");
-        require(!goalReached, "Goal reached");
+    function markComplete() external {
+        require(status == Status.Active, "Already completed");
+        require(block.timestamp >= deadline, "Deadline not reached");
 
-        uint256 amount = contributions[msg.sender];
-        contributions[msg.sender] = 0;
-        if(amount > 0) {
-            token.transfer(msg.sender, amount);
-        }
+        status = totalDonated >= target ? Status.Successful : Status.Completed;
+        emit CampaignCompleted(status == Status.Successful);
     }
 
-    function pauseCampaign() external onlyOwner {
-        _pause();
+    function remainingToTarget() external view returns (uint256) {
+        if (totalDonated >= target) return 0;
+        return target - totalDonated;
     }
 
-    function unpauseCampaign() external onlyOwner {
-        _unpause();
+    function updateMetadata(string memory _name, string memory _description) external {
+        name = _name;
+        description = _description;
+        emit MetadataUpdated(_name, _description);
     }
 
-    modifier onlyOwner() {
-        require(msg.sender == beneficiary, "Not owner");
-        _;
+    function isSuccessful() external view returns (bool) {
+        return status == Status.Successful;
     }
 }

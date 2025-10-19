@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.21;
 
 import "@openzeppelin/contracts/governance/Governor.sol";
 import "@openzeppelin/contracts/governance/extensions/GovernorCountingSimple.sol";
@@ -21,22 +21,18 @@ contract Governance is
         GovernorTimelockControl(_timelock)
     {}
 
-    // сколько блоков идёт голосование (пример: 1 неделя)
     function votingPeriod() public pure override returns (uint256) {
-        return 45818; // ~1 неделя при 15 сек блоках
+        return 45818;
     }
 
-    // когда начинается голосование после предложения
     function votingDelay() public pure override returns (uint256) {
-        return 1; // 1 блок
+        return 1;
     }
 
-    // кто может предложить (по умолчанию — любой с токенами)
     function proposalThreshold() public pure override returns (uint256) {
-        return 1000e18; // минимум 1000 UAH токенов
+        return 1000e18;
     }
 
-    // конфликты наследования
     function state(uint256 proposalId)
         public
         view
@@ -65,10 +61,7 @@ contract Governance is
         uint256[] memory values,
         bytes[] memory calldatas,
         bytes32 descriptionHash
-    )
-        internal
-        override(Governor, GovernorTimelockControl)
-    {
+    ) internal override(Governor, GovernorTimelockControl) {
         super._execute(proposalId, targets, values, calldatas, descriptionHash);
     }
 
@@ -77,11 +70,7 @@ contract Governance is
         uint256[] memory values,
         bytes[] memory calldatas,
         bytes32 descriptionHash
-    )
-        internal
-        override(Governor, GovernorTimelockControl)
-        returns (uint256)
-    {
+    ) internal override(Governor, GovernorTimelockControl) returns (uint256) {
         return super._cancel(targets, values, calldatas, descriptionHash);
     }
 
@@ -101,5 +90,56 @@ contract Governance is
         returns (bool)
     {
         return super.supportsInterface(interfaceId);
+    }
+
+    // 🔍 Получить статус предложения в виде строки
+    function proposalStatus(uint256 proposalId) external view returns (string memory) {
+        ProposalState s = state(proposalId);
+        if (s == ProposalState.Pending) return "Pending";
+        if (s == ProposalState.Active) return "Active";
+        if (s == ProposalState.Canceled) return "Canceled";
+        if (s == ProposalState.Defeated) return "Defeated";
+        if (s == ProposalState.Succeeded) return "Succeeded";
+        if (s == ProposalState.Queued) return "Queued";
+        if (s == ProposalState.Expired) return "Expired";
+        if (s == ProposalState.Executed) return "Executed";
+        return "Unknown";
+    }
+
+    // 📊 Проверить, голосовал ли адрес
+    function hasVoted(uint256 proposalId, address account)
+    public
+    view
+    override(GovernorCountingSimple, IGovernor)
+    returns (bool)
+{
+    // твоя логика
+}
+
+    // 📈 Получить силу голоса адреса
+    function getVotingPower(address account) external view returns (uint256) {
+        return getVotes(account, block.number - 1);
+    }
+
+    // 📋 Получить детали предложения
+    function getProposalDetails(uint256 proposalId)
+        external
+        view
+        returns (
+            ProposalState status,
+            uint256 snapshot,
+            uint256 deadline,
+            string memory statusText
+        )
+    {
+        status = state(proposalId);
+        snapshot = proposalSnapshot(proposalId);
+        deadline = proposalDeadline(proposalId);
+        statusText = this.proposalStatus(proposalId);
+    }
+
+    // ✅ Проверка достижения кворума
+    function quorumReached(uint256 proposalId) external view returns (bool) {
+        return _quorumReached(proposalId);
     }
 }

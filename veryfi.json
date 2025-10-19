@@ -1,0 +1,11 @@
+{
+  "TimelockController": {
+    "address": "0xA53DC48E46c86Cb67FaE00A6749fd1dFF5C09987",
+    "constructorArgs": [
+      3600,
+      ["0x12A3dE2375C0330ef3aaDf6Bb6c02A7D9c8a319C"],
+      ["0x12A3dE2375C0330ef3aaDf6Bb6c02A7D9c8a319C"],
+       "0x12A3dE2375C0330ef3aaDf6Bb6c02A7D9c8a319C"
+    ]
+  }
+}

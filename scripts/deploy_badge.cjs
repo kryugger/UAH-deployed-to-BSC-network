@@ -1,13 +1,13 @@
-const hre = require("hardhat");
+const { ethers } = require("hardhat");
 
 async function main() {
-  const DonorBadge = await hre.ethers.deployContract("DonorBadge");
+  const DonorBadge = await ethers.deployContract("DonorBadge", []);
   await DonorBadge.waitForDeployment();
 
-  console.log("🎖️ DonorBadge deployed to:", await DonorBadge.getAddress());
+  console.log("✅ DonorBadge deployed to:", DonorBadge.target);
 }
 
 main().catch((error) => {
-  console.error("❌ Ошибка:", error);
+  console.error("❌ Deployment failed:", error);
   process.exitCode = 1;
 });

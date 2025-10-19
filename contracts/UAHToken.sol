@@ -1,66 +1,68 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.21;
 
-import "@openzeppelin/contracts/security/Pausable.sol";
-import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Snapshot.sol";
-import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
+import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 
-contract UAHToken is ERC20Snapshot, ERC20Burnable, Pausable, AccessControl {
+contract UAHTokenV2 is ERC20, AccessControl {
+    using SafeMath for uint256;
 
     bytes32 public constant MINTER_ROLE = keccak256("MINTER_ROLE");
-    bytes32 public constant SNAPSHOT_ROLE = keccak256("SNAPSHOT_ROLE");
 
     address public feeWallet;
-    uint256 public feePercent; // пример: 50 = 0.5%
+    uint256 public feeBasisPoints;   // комиссия (в bps, 50 = 0.5%)
+    uint256 public burnBasisPoints;  // сжигание (в bps, 10 = 0.1%)
 
-    constructor(uint256 initialSupply, address owner) ERC20("UAH Token", "UAH") {
-        _setupRole(DEFAULT_ADMIN_ROLE, owner);
-        _setupRole(SNAPSHOT_ROLE, owner);
-        _setupRole(MINTER_ROLE, owner);
-        _mint(owner, initialSupply);
-        feeWallet = owner;
-        feePercent = 0;
+    event FeeWalletChanged(address indexed oldWallet, address indexed newWallet);
+    event FeeUpdated(uint256 oldFee, uint256 newFee);
+    event BurnUpdated(uint256 oldBurn, uint256 newBurn);
+
+    constructor(
+        string memory name_,
+        string memory symbol_,
+        uint256 initialSupply_,
+        address feeWallet_,
+        uint256 feeBP_,
+        uint256 burnBP_
+    ) ERC20(name_, symbol_) {
+        _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
+        _grantRole(MINTER_ROLE, msg.sender);
+
+        feeWallet = feeWallet_;
+        feeBasisPoints = feeBP_;
+        burnBasisPoints = burnBP_;
+
+        _mint(msg.sender, initialSupply_ * (10 ** decimals()));
     }
 
-    function snapshot() external onlyRole(SNAPSHOT_ROLE) {
-        _snapshot();
+    function setFeeWallet(address newWallet) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        emit FeeWalletChanged(feeWallet, newWallet);
+        feeWallet = newWallet;
     }
 
-    function setFee(uint256 _feePercent) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        feePercent = _feePercent;
+    function setFee(uint256 newFeeBP) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        emit FeeUpdated(feeBasisPoints, newFeeBP);
+        feeBasisPoints = newFeeBP;
     }
 
-    function setFeeWallet(address _wallet) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        feeWallet = _wallet;
-    }
-
-    function pause() external onlyRole(DEFAULT_ADMIN_ROLE) {
-        _pause();
-    }
-
-    function unpause() external onlyRole(DEFAULT_ADMIN_ROLE) {
-        _unpause();
+    function setBurn(uint256 newBurnBP) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        emit BurnUpdated(burnBasisPoints, newBurnBP);
+        burnBasisPoints = newBurnBP;
     }
 
     function mint(address to, uint256 amount) external onlyRole(MINTER_ROLE) {
         _mint(to, amount);
     }
 
-    function _transfer(address sender, address recipient, uint256 amount) internal override {
-        if(feePercent > 0 && feeWallet != address(0) && sender != feeWallet) {
-            uint256 fee = (amount * feePercent) / 10000; // feePercent в сотых долях процента
-            super._transfer(sender, feeWallet, fee);
-            amount -= fee;
-        }
-        super._transfer(sender, recipient, amount);
-    }
+    function _transfer(address from, address to, uint256 amount) internal override {
+        uint256 fee = amount.mul(feeBasisPoints).div(10000);
+        uint256 burn = amount.mul(burnBasisPoints).div(10000);
 
-    function _beforeTokenTransfer(address from, address to, uint256 amount)
-        internal
-        override(ERC20, ERC20Snapshot)
-    {
-        super._beforeTokenTransfer(from, to, amount);
-        require(!paused(), "Token transfers are paused");
+        uint256 netAmount = amount.sub(fee).sub(burn);
+
+        super._transfer(from, feeWallet, fee);
+        super._transfer(from, address(0), burn);
+        super._transfer(from, to, netAmount);
     }
 }
